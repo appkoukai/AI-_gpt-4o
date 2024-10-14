@@ -16,7 +16,7 @@ import re
 import warnings
 
 # OpenAI APIの設定
-openai.api_key = st.secrets["openai"]["api_key"]
+api_key = st.secrets["OPENAI_API_KEY"]
 
 # Janomeトークナイザー
 tokenizer = Tokenizer()
@@ -129,7 +129,7 @@ def generate_additional_evaluation(previous_evaluation, additional_points, corre
 上記の情報を踏まえて、より詳細で正確な評価を行ってください。
 特に修正が必要な点については、どのように評価を修正すべきか具体的に説明してください。"""
 
-    response = openai.chat.completions.create(
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "あなたは文章分析の専門家です。前回の評価を踏まえて、追加の評価と修正を行ってください。"},

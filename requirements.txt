@@ -7,3 +7,4 @@ networkx
 matplotlib
 numpy
 seaborn
+japanize_matplotlib

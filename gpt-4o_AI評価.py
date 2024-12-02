@@ -4,28 +4,25 @@ import openai
 from sklearn.feature_extraction.text import TfidfVectorizer
 from janome.tokenizer import Tokenizer
 import pandas as pd
-import networkx as nx
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import matplotlib.font_manager as fm
 import numpy as np
-import math
-from collections import defaultdict, Counter
 import os
 import re
 import warnings
+import seaborn as sns
 
 # OpenAI APIの設定
 api_key = st.secrets["OPENAI_API_KEY"]
 
-# Janomeトークナイザー
+# Janomeの初期化
 tokenizer = Tokenizer()
 
 # 日本語フォントの設定
 font_paths = [
-    "C:\\windows\\Fonts\\YUMIN.TTF",
-    "C:\\windows\\Fonts\\YUMINDB.TTF",
-    "C:\\windows\\Fonts\\YUMINL.TTF"
+    "./YUMIN.TTF",
+    "./YUMINDB.TTF",
+    "./YUMINL.TTF"
 ]
 for font_path in font_paths:
     if os.path.exists(font_path):
@@ -39,57 +36,104 @@ else:
 exclusion_list = {'の', 'は', 'に', 'を', 'こと','よう','それ','もの','ん','事'}
 
 def tokenize(text):
-    tokens = tokenizer.tokenize(text)
-    return [token.surface for token in tokens if token.surface not in exclusion_list and token.part_of_speech.split(',')[0] in ['名詞', '代名詞']]
-
+    tokens = []
+    for token in tokenizer.tokenize(text):
+        if token.surface not in exclusion_list and token.part_of_speech.split(',')[0] in ['名詞', '代名詞']:
+            tokens.append(token.surface)
+    return tokens
+ 
 def extract_keywords(text):
-    vectorizer = TfidfVectorizer(tokenizer=tokenize, token_pattern=None)
+    vectorizer = TfidfVectorizer(
+        tokenizer=tokenize, 
+        token_pattern=None,
+        lowercase=False,  # 大文字小文字を区別する
+        max_features=100  # 最大100語に設定
+    )
     vectors = vectorizer.fit_transform([text])
     feature_names = vectorizer.get_feature_names_out()
     dense = vectors.todense()
     denselist = dense.tolist()
-    keywords = sorted([(word, score) for word, score in zip(feature_names, denselist[0]) if score > 0.05], key=lambda x: x[1], reverse=True)
-    return keywords
+    keywords = sorted([(word, score) for word, score in zip(feature_names, denselist[0]) if score > 0], 
+                     key=lambda x: x[1], 
+                     reverse=True)
+    return keywords[:100]  # 上位100語を返す
 
-def find_cooccurrences(text, keywords, window_size=30):
-    cooccurrence_matrix = defaultdict(Counter)
+
+def calculate_pmi(text, keywords, window_size=5):
+    keywords = keywords[:20]
     tokens = tokenize(text)
+    keyword_set = set([k[0] for k in keywords])
+    
+    # 単語の個別出現回数
+    word_counts = {k[0]: 0 for k in keywords}
+    # 共起回数
+    cooccurrence_counts = {k[0]: {k2[0]: 0 for k2 in keywords} for k in keywords}
+    # 総ウィンドウ数
+    total_windows = len(tokens) - window_size + 1
+    
+    # 単語カウントと共起カウント
     for i in range(len(tokens)):
-        if tokens[i] in [k[0] for k in keywords]:
-            window = tokens[i+1:i+1+window_size]
-            for word in window:
-                if word in [k[0] for k in keywords]:
-                    cooccurrence_matrix[tokens[i]][word] += 1
-                    cooccurrence_matrix[word][tokens[i]] += 1
-    return cooccurrence_matrix
-
-def draw_cooccurrence_network(cooccurrences, tfidf_scores):
-    G = nx.Graph()
-    for word, cooccur in cooccurrences.items():
-        for co_word, weight in cooccur.items():
-            G.add_edge(word, co_word, weight=weight)
+        if tokens[i] in keyword_set:
+            word_counts[tokens[i]] += 1
+            
+        if i < total_windows:
+            window = tokens[i:i+window_size]
+            window_words = set(w for w in window if w in keyword_set)
+            for w1 in window_words:
+                for w2 in window_words:
+                    if w1 != w2:
+                        cooccurrence_counts[w1][w2] += 1
     
-    pos = nx.spring_layout(G)
-    weights = nx.get_edge_attributes(G, 'weight')
+    # PMI行列の計算
+    pmi_matrix = {}
+    for w1 in keyword_set:
+        pmi_matrix[w1] = {}
+        for w2 in keyword_set:
+            if w1 != w2:
+                p_w1 = word_counts[w1] / total_windows
+                p_w2 = word_counts[w2] / total_windows
+                p_w1w2 = cooccurrence_counts[w1][w2] / total_windows
+                
+                if p_w1w2 > 0:
+                    pmi = np.log2(p_w1w2 / (p_w1 * p_w2))
+                else:
+                    pmi = 0
+                pmi_matrix[w1][w2] = pmi
     
-    node_sizes = []
-    for node in G.nodes():
-        node_sizes.append(tfidf_scores.get(node, 0) * 30000)
+    return pd.DataFrame(pmi_matrix)
 
-    edge_widths = []
-    for (u, v, d) in G.edges(data=True):
-        log_weight = math.log(d['weight'] + 1)
-        scaled_width = log_weight * 2
-        edge_widths.append(scaled_width)
-
-    colors_array = cm.Pastel2(np.linspace(0.1, 0.9, len(G.nodes())))
-    node_colors = [colors_array[i % len(colors_array)] for i in range(len(G.nodes()))]
-
-    fig, ax = plt.subplots(figsize=(12, 8))
-    nx.draw(G, pos, ax=ax, with_labels=True, node_color=node_colors, node_size=node_sizes, font_size=10, font_weight='bold', font_family=prop.get_name())
-    nx.draw_networkx_edges(G, pos, ax=ax, width=edge_widths, edge_color="lightblue")
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=weights, font_family=prop.get_name())
+def create_cooccurrence_heatmap(correlation_matrix, keywords):
+     # キーワードのリストを作成
+    keyword_texts = [k[0] for k in keywords[:20]]  # Top 20 keywords
     
+    # correlation_matrixから必要な部分だけを抽出
+    matrix_data = correlation_matrix.loc[keyword_texts, keyword_texts]
+    fig = plt.figure(figsize=(12, 9))
+    
+    # 上三角を除去
+    mask = np.triu(np.ones_like(correlation_matrix), k=0)
+    
+    # ヒートマップを描画
+    ax = sns.heatmap(matrix_data, cmap='coolwarm', mask=mask, 
+                     linewidths=0.5, annot=True, fmt='.2f', cbar=True)
+    
+    plt.title('特徴語の共起相関ヒートマップ (上位20語)', fontsize=16, fontproperties=prop)
+    
+    # 軸ラベルを削除
+    ax.set_xticks([])
+    ax.set_yticks([])
+    
+    keyword_texts = [k[0] for k in keywords[:20]]  # Top 20 keywords
+    
+    # x軸のラベルを配置
+    ax.set_xticks(np.arange(len(keyword_texts)) + 0.5)
+    ax.set_xticklabels(keyword_texts, rotation=45, ha='right', fontproperties=prop)
+    
+    # y軸のラベルを配置
+    ax.set_yticks(np.arange(len(keyword_texts)) + 0.5)
+    ax.set_yticklabels(keyword_texts, rotation=0, va='center', fontproperties=prop)
+    
+    plt.tight_layout()
     return fig
 
 def parse_evaluation_points(input_text):
@@ -138,47 +182,56 @@ def generate_additional_evaluation(previous_evaluation, additional_points, corre
     )
     return response.choices[0].message.content
 
-def plot_word_positions(target_words, text, num_blocks=30):
+def plot_word_positions(target_words, text, num_blocks=20):
+    target_words = target_words[:15]
     total_chars = len(text)
     block_size = total_chars // num_blocks
     fig, ax = plt.subplots(figsize=(12, 8))
 
+    # 格子を描画
+    for i in range(num_blocks + 1):
+        ax.axvline(x=i, color='gray', linestyle=':', alpha=0.3)
+    for i in range(len(target_words) + 1):
+        ax.axhline(y=i, color='gray', linestyle=':', alpha=0.3)
+
     word_counts = {word: [0]*num_blocks for word in target_words}
 
-    tokens = list(tokenizer.tokenize(text))
-
-    char_index = 0
-    block_index = 0
-    for token in tokens:
+    # Janomeで形態素解析して位置をカウント
+    char_count = 0
+    for token in tokenizer.tokenize(text):
         word = token.surface
-        char_index += len(word)
-        block_index = min(char_index // block_size, num_blocks - 1)
+        char_count += len(word)
+        block_index = min(char_count // block_size, num_blocks - 1)
         if word in word_counts:
             word_counts[word][block_index] += 1
-
     colors = plt.cm.tab10(np.linspace(0, 1, len(target_words)))
 
+    # 円で出現率を表現
     for i, (word, counts) in enumerate(word_counts.items()):
         if sum(counts) == 0:
             st.write(f"単語 '{word}' は文章中に見つかりませんでした。")
             continue
-        max_count = max(counts)
+        max_count = max(max(counts), 1)  # ゼロ除算を防ぐ
         for j in range(num_blocks):
             if counts[j] > 0:
-                height = counts[j] / max_count * 0.8  # 高さを正規化
-                ax.plot([j, j], [i-height/2, i+height/2], color=colors[i], linewidth=10)
+                size = counts[j] / max_count * 1200  # サイズを調整
+                ax.scatter(j + 0.5, i, s=size, color=colors[i], alpha=0.6)
 
     ax.set_xlabel('文字数', fontproperties=prop)
-    ax.set_title('単語の出現頻度（30分割）', fontproperties=prop)
+    ax.set_title('特徴語の出現位置', fontproperties=prop)
     ax.set_yticks(range(len(target_words)))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         ax.set_yticklabels(target_words, fontproperties=prop)
     ax.invert_yaxis()
 
-    plt.xticks(range(0, num_blocks+1, 5), [f"{i*block_size}" for i in range(0, num_blocks+1, 5)], fontproperties=prop)
+    # X軸のラベルを設定
+    xticks = np.linspace(0, num_blocks, 5)
+    xtick_labels = [f"{int(x * total_chars / num_blocks)}" for x in xticks]
+    plt.xticks(xticks, xtick_labels, fontproperties=prop)
     plt.yticks(fontproperties=prop)
 
+    plt.tight_layout()
     return fig
 
 # Streamlit UIの構築
@@ -206,11 +259,10 @@ if st.button('分析を実行'):
         keywords_data = keywords_data.sort_values(by='スコア', ascending=False).reset_index(drop=True)
         keywords_data.insert(0, '順位', range(1, len(keywords_data) + 1))
 
-        # 共起ネットワーク作成
-        cooccurrences = find_cooccurrences(user_input, keywords)
-        tfidf_scores = {word: score for word, score in keywords}
-        cooccurrence_fig = draw_cooccurrence_network(cooccurrences, tfidf_scores)
-
+        # 共起ヒートマップ作成
+        correlation_matrix = calculate_pmi(user_input, keywords)
+        cooccurrence_fig = create_cooccurrence_heatmap(correlation_matrix, keywords)
+        
         # 単語位置の可視化
         top_keywords = [word for word, _ in keywords[:10]]  # 上位10個の特徴語を使用
         word_position_fig = plot_word_positions(top_keywords, user_input)
@@ -223,7 +275,7 @@ if st.button('分析を実行'):
         st.session_state.word_position_fig = word_position_fig
 
 # タブ分け
-tabs = st.tabs(["特徴語抽出", "共起ネットワーク描画", "単語位置の可視化", "生成AIの評価"])
+tabs = st.tabs(["特徴語抽出", "共起ヒートマップ", "単語位置の可視化", "生成AIの評価"])
 
 with tabs[0]:
     if 'keywords_data' in st.session_state:
@@ -231,15 +283,54 @@ with tabs[0]:
         st.table(st.session_state.keywords_data)
 
 with tabs[1]:
-    if 'cooccurrence_fig' in st.session_state:
+    if 'keywords_data' in st.session_state:
         st.success('分析が完了しました')
-        st.pyplot(st.session_state.cooccurrence_fig)
+        
+        # 特徴語の選択機能を追加
+        all_keywords = [word for word, _ in st.session_state.keywords]
+        default_selection = all_keywords[:20]
+        selected_keywords_heatmap = st.multiselect(
+            '共起ヒートマップに表示する特徴語を選択してください（最大20語）',
+            all_keywords,
+            default=default_selection
+        )
+        
+        if len(selected_keywords_heatmap) > 20:
+            st.warning('20語以上選択されています。上位20語のみ表示します。')
+            selected_keywords_heatmap = selected_keywords_heatmap[:20]
+        
+        if selected_keywords_heatmap:
+            # 選択された特徴語でヒートマップを再生成
+            selected_keywords_with_scores = [
+                (word, score) for word, score in st.session_state.keywords 
+                if word in selected_keywords_heatmap
+            ]
+            correlation_matrix = calculate_pmi(st.session_state.user_input, selected_keywords_with_scores)
+            new_heatmap_fig = create_cooccurrence_heatmap(correlation_matrix, selected_keywords_with_scores)
+            st.pyplot(new_heatmap_fig)
 
 with tabs[2]:
-    if 'word_position_fig' in st.session_state:
+    if 'keywords_data' in st.session_state:
         st.success('分析が完了しました')
         st.subheader("特徴語の出現位置")
-        st.pyplot(st.session_state.word_position_fig)
+        
+        # 特徴語の選択機能を追加
+        all_keywords = [word for word, _ in st.session_state.keywords]
+        default_selection = all_keywords[:15]
+        selected_keywords_plot = st.multiselect(
+            '出現位置プロットに表示する特徴語を選択してください（最大15語）',
+            all_keywords,
+            default=default_selection
+        )
+        
+        if len(selected_keywords_plot) > 15:
+            st.warning('15語以上選択されています。上位15語のみ表示します。')
+            selected_keywords_plot = selected_keywords_plot[:15]
+        
+        if selected_keywords_plot:
+            # 選択された特徴語でプロットを再生成
+            new_position_fig = plot_word_positions(selected_keywords_plot, st.session_state.user_input)
+            st.pyplot(new_position_fig)
 
 with tabs[3]:
     if st.button('生成AIの評価を実行'):

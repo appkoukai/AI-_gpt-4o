@@ -58,6 +58,12 @@ def extract_keywords(text):
             freq = word_freq.get(word, 0)
             keywords.append((word, score, freq))
 
+    # キーワードをスコアで降順ソート
+    keywords.sort(key=lambda x: x[1], reverse=True)
+    
+    # (word, score) のタプルのリストを返す
+    return [(word, score) for word, score, freq in keywords]
+
 
 def calculate_pmi(text, keywords, window_size=5):
     keywords = keywords[:20]

@@ -11,6 +11,7 @@ import os
 import re
 import warnings
 import seaborn as sns
+import japanize_matplotlib
 
 # OpenAI APIの設定
 api_key = st.secrets["OPENAI_API_KEY"]
@@ -18,19 +19,8 @@ api_key = st.secrets["OPENAI_API_KEY"]
 # Janomeの初期化
 tokenizer = Tokenizer()
 
-# 日本語フォントの設定
-font_paths = [
-    "./YUMIN.TTF",
-    "./YUMINDB.TTF",
-    "./YUMINL.TTF"
-]
-for font_path in font_paths:
-    if os.path.exists(font_path):
-        prop = fm.FontProperties(fname=font_path)
-        break
-else:
-    st.error("指定されたフォントが見つかりません。表示に問題がある可能性があります。")
-    prop = fm.FontProperties()
+# seabornのスタイル設定
+sns.set()
 
 # 除外する単語のリストを定義
 exclusion_list = {'の', 'は', 'に', 'を', 'こと','よう','それ','もの','ん','事'}
@@ -117,7 +107,7 @@ def create_cooccurrence_heatmap(correlation_matrix, keywords):
     ax = sns.heatmap(matrix_data, cmap='coolwarm', mask=mask, 
                      linewidths=0.5, annot=True, fmt='.2f', cbar=True)
     
-    plt.title('特徴語の共起相関ヒートマップ (上位20語)', fontsize=16, fontproperties=prop)
+    plt.title('特徴語の共起相関ヒートマップ (上位20語)', fontsize=16)
     
     # 軸ラベルを削除
     ax.set_xticks([])
@@ -127,11 +117,11 @@ def create_cooccurrence_heatmap(correlation_matrix, keywords):
     
     # x軸のラベルを配置
     ax.set_xticks(np.arange(len(keyword_texts)) + 0.5)
-    ax.set_xticklabels(keyword_texts, rotation=45, ha='right', fontproperties=prop)
+    ax.set_xticklabels(keyword_texts, rotation=45, ha='right')
     
     # y軸のラベルを配置
     ax.set_yticks(np.arange(len(keyword_texts)) + 0.5)
-    ax.set_yticklabels(keyword_texts, rotation=0, va='center', fontproperties=prop)
+    ax.set_yticklabels(keyword_texts, rotation=0, va='center')
     
     plt.tight_layout()
     return fig
@@ -217,19 +207,16 @@ def plot_word_positions(target_words, text, num_blocks=20):
                 size = counts[j] / max_count * 1200  # サイズを調整
                 ax.scatter(j + 0.5, i, s=size, color=colors[i], alpha=0.6)
 
-    ax.set_xlabel('文字数', fontproperties=prop)
-    ax.set_title('特徴語の出現位置', fontproperties=prop)
+    ax.set_xlabel('文字数',)
+    ax.set_title('特徴語の出現位置')
     ax.set_yticks(range(len(target_words)))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        ax.set_yticklabels(target_words, fontproperties=prop)
     ax.invert_yaxis()
 
     # X軸のラベルを設定
     xticks = np.linspace(0, num_blocks, 5)
     xtick_labels = [f"{int(x * total_chars / num_blocks)}" for x in xticks]
-    plt.xticks(xticks, xtick_labels, fontproperties=prop)
-    plt.yticks(fontproperties=prop)
+    plt.xticks(xticks, xtick_labels)
+    plt.yticks()
 
     plt.tight_layout()
     return fig

@@ -72,7 +72,7 @@ class TextAnalyzer:
         
         # スコアで降順ソート
         keywords.sort(key=lambda x: x[1], reverse=True)
-        return keywords
+            return keywords
     except Exception as e:
         st.error(f"キーワード抽出中にエラーが発生しました: {str(e)}")
         return []

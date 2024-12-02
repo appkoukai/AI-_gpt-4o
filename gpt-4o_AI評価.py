@@ -47,7 +47,7 @@ class TextAnalyzer:
 
     # 特徴語抽出
     def extract_keywords(self, text: str) -> List[Tuple[str, float, int]]:
-    """キーワード抽出"""
+        """キーワード抽出"""
     try:
         # 事前学習済みのTF-IDFベクトライザーを読み込む
         vectorizer = joblib.load('tfidf_vectorizer.joblib')

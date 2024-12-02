@@ -218,6 +218,10 @@ def plot_word_positions(target_words, text, num_blocks=20):
     plt.xticks(xticks, xtick_labels)
     plt.yticks()
 
+    # Y軸のラベルを設定
+    ax.set_yticks(range(len(target_words)))
+    ax.set_yticklabels(target_words)
+    
     plt.tight_layout()
     return fig
 

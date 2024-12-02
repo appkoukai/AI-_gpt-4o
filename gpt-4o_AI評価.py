@@ -39,14 +39,24 @@ def extract_keywords(text):
         lowercase=False,  # 大文字小文字を区別する
         max_features=100  # 最大100語に設定
     )
+    # TF-IDF値の計算
     vectors = vectorizer.fit_transform([text])
     feature_names = vectorizer.get_feature_names_out()
     dense = vectors.todense()
     denselist = dense.tolist()
-    keywords = sorted([(word, score) for word, score in zip(feature_names, denselist[0]) if score > 0], 
-                     key=lambda x: x[1], 
-                     reverse=True)
-    return keywords[:100]  # 上位100語を返す
+    
+    # 出現頻度のカウント
+    word_freq = {}
+    for token in tokenize(text):
+        if token in feature_names:
+            word_freq[token] = word_freq.get(token, 0) + 1
+    
+    # TF-IDF値と出現頻度をまとめる
+    keywords = []
+    for word, score in zip(feature_names, denselist[0]):
+        if score > 0:
+            freq = word_freq.get(word, 0)
+            keywords.append((word, score, freq))
 
 
 def calculate_pmi(text, keywords, window_size=5):
@@ -221,7 +231,7 @@ def plot_word_positions(target_words, text, num_blocks=20):
     # Y軸のラベルを設定
     ax.set_yticks(range(len(target_words)))
     ax.set_yticklabels(target_words)
-    
+
     plt.tight_layout()
     return fig
 

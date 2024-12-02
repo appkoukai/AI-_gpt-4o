@@ -8,3 +8,4 @@ matplotlib
 numpy
 seaborn
 matplotlib_fontja
+joblib

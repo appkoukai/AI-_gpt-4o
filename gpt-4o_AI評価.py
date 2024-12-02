@@ -20,7 +20,7 @@ api_key = st.secrets["OPENAI_API_KEY"]
 tokenizer = Tokenizer()
 
 # seabornのスタイル設定
-sns.set()
+sns.set(font="IPAexGothic")
 
 # 除外する単語のリストを定義
 exclusion_list = {'の', 'は', 'に', 'を', 'こと','よう','それ','もの','ん','事'}

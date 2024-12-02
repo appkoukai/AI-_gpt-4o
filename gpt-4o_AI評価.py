@@ -11,7 +11,7 @@ import os
 import re
 import warnings
 import seaborn as sns
-import japanize_matplotlib
+import matplotlib_fontja
 
 # OpenAI APIの設定
 api_key = st.secrets["OPENAI_API_KEY"]

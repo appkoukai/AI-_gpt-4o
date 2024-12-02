@@ -256,7 +256,7 @@ if st.button('分析を実行'):
     with st.spinner('分析中...'):
         # キーワード抽出
         keywords = extract_keywords(user_input)
-        keywords_data = pd.DataFrame(keywords, columns=['単語', 'スコア'])
+        keywords_data = pd.DataFrame(keywords, columns=['単語', 'スコア', '出現回数'])
         keywords_data = keywords_data.sort_values(by='スコア', ascending=False).reset_index(drop=True)
         keywords_data.insert(0, '順位', range(1, len(keywords_data) + 1))
 

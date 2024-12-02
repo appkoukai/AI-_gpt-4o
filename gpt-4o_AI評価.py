@@ -11,6 +11,7 @@ import seaborn as sns
 import matplotlib_fontja
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Optional
+import joblib
 
 # 以下のモジュールがインストールされていない場合はインストールしてください
 # !pip install streamlit openai scikit-learn janome pandas matplotlib seaborn matplotlib-fontja
@@ -44,38 +45,37 @@ class TextAnalyzer:
                 tokens.append(token.surface)
         return tokens
 
-    def extract_keywords(self, text: str) -> List[Tuple[str, float, int]]:
-        """キーワード抽出"""
-        try:
-            vectorizer = TfidfVectorizer(
-                tokenizer=self.tokenize,
-                token_pattern=None,
-                lowercase=False,
-                max_features=self.config.max_keywords
-            )
-            vectors = vectorizer.fit_transform([text])
-            feature_names = vectorizer.get_feature_names_out()
-            scores = vectors.todense().tolist()[0]
-            
-            # 出現頻度のカウント
-            word_freq = {}
-            tokens = self.tokenize(text)
-            for token in tokens:
-                if token in feature_names:
-                    word_freq[token] = word_freq.get(token, 0) + 1
-            
-            keywords = []
-            for word, score in zip(feature_names, scores):
-                if score > 0:
-                    freq = word_freq.get(word, 0)
-                    keywords.append((word, score, freq))
-            
-            # スコアで降順ソート
-            keywords.sort(key=lambda x: x[1], reverse=True)
-            return keywords
-        except Exception as e:
-            st.error(f"キーワード抽出中にエラーが発生しました: {str(e)}")
-            return []
+    # 特徴語抽出
+def extract_keywords(self, text: str) -> List[Tuple[str, float, int]]:
+    """キーワード抽出"""
+    try:
+        # 事前学習済みのTF-IDFベクトライザーを読み込む
+        vectorizer = joblib.load('tfidf_vectorizer.joblib')
+        
+        # テキストをベクトル化
+        vectors = vectorizer.transform([text])
+        feature_names = vectorizer.get_feature_names_out()
+        scores = vectors.todense().tolist()[0]
+        
+        # 出現頻度のカウント
+        word_freq = {}
+        tokens = self.tokenize(text)
+        for token in tokens:
+            if token in feature_names:
+                word_freq[token] = word_freq.get(token, 0) + 1
+        
+        keywords = []
+        for word, score in zip(feature_names, scores):
+            if score > 0:
+                freq = word_freq.get(word, 0)
+                keywords.append((word, score, freq))
+        
+        # スコアで降順ソート
+        keywords.sort(key=lambda x: x[1], reverse=True)
+        return keywords
+    except Exception as e:
+        st.error(f"キーワード抽出中にエラーが発生しました: {str(e)}")
+        return []
 
     def calculate_pmi(self, text: str, keywords: List[Tuple[str, float, int]]) -> pd.DataFrame:
         """PMI行列の計算"""
